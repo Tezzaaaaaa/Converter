@@ -324,6 +324,15 @@ def extract(url: str) -> dict:
                         for source in sources[:100]
                     ],
                 }
+
+            page = html.unescape(xhamster_fetch_page(url))
+            if re.search(r"verify your age.{0,100}logged in|logged in.{0,100}verify your age", page, re.I | re.S):
+                raise HTTPException(
+                    status_code=422,
+                    detail="XHamster requires age verification and login for this video. Verify access on XHamster, then try again.",
+                )
+        except HTTPException:
+            raise
         except Exception:
             pass
 
