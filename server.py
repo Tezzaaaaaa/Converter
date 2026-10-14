@@ -6,6 +6,7 @@ import re
 import socket
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -244,13 +245,23 @@ def xhamster_source_for_id(url: str, source_id: str) -> dict | None:
     return None
 
 
-def xhamster_download_source(source: dict, page_url: str, output: Path) -> None:
+def xhamster_download_source(source: dict, page_url: str, output: Path, download_id: str | None = None) -> None:
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36",
         "Referer": page_url,
     }
 
     if source["type"] == "hls":
+        update_download_progress(
+            download_id,
+            stage="downloading",
+            percent=None,
+            downloaded_bytes=0,
+            total_bytes=None,
+            speed=None,
+            eta=None,
+            message="Downloading live stream; this source does not expose a reliable percentage…",
+        )
         header_text = "".join(f"{key}: {value}\\r\\n" for key, value in headers.items())
         subprocess.run(
             [
@@ -263,6 +274,14 @@ def xhamster_download_source(source: dict, page_url: str, output: Path) -> None:
             ],
             check=True,
             timeout=300,
+        )
+        update_download_progress(
+            download_id,
+            stage="processing",
+            percent=99,
+            speed=None,
+            eta=None,
+            message="Stream downloaded; checking the video…",
         )
         return
 
@@ -277,6 +296,8 @@ def xhamster_download_source(source: dict, page_url: str, output: Path) -> None:
     try:
         response.raise_for_status()
         total = 0
+        content_length = int(response.headers.get("content-length") or 0)
+        started = time.monotonic()
         with output.open("wb") as handle:
             for chunk in response.iter_content(chunk_size=1024 * 1024):
                 if not chunk:
@@ -285,6 +306,19 @@ def xhamster_download_source(source: dict, page_url: str, output: Path) -> None:
                 if total > MAX_FILE_SIZE:
                     raise HTTPException(status_code=413, detail="The resulting file is larger than the 2 GB limit.")
                 handle.write(chunk)
+                elapsed = max(time.monotonic() - started, 0.1)
+                speed = total / elapsed
+                percent = min(99, total * 100 / content_length) if content_length else None
+                update_download_progress(
+                    download_id,
+                    stage="downloading",
+                    percent=round(percent, 1) if percent is not None else None,
+                    downloaded_bytes=total,
+                    total_bytes=content_length or None,
+                    speed=speed,
+                    eta=(content_length - total) / speed if content_length and speed > 0 else None,
+                    message="Downloading video stream…",
+                )
     finally:
         response.close()
 
@@ -481,17 +515,28 @@ def download_media(request: URLRequest, background_tasks: BackgroundTasks) -> Fi
     validate_public_url(request.url)
 
     if is_xhamster_url(request.url) and request.format_id and request.format_id.startswith("xh_"):
+        update_download_progress(
+            request.download_id,
+            stage="starting",
+            percent=0,
+            downloaded_bytes=0,
+            total_bytes=None,
+            speed=None,
+            eta=None,
+            message="Preparing video stream…",
+        )
         temp_dir = Path(tempfile.mkdtemp(prefix="video-downloader-xh-"))
         output = temp_dir / "download.mp4"
         try:
             source = xhamster_source_for_id(request.url, request.format_id)
             if source is None:
                 raise HTTPException(status_code=422, detail="That XHamster media source is no longer available. Analyze the URL again.")
-            xhamster_download_source(source, request.url, output)
+            xhamster_download_source(source, request.url, output, request.download_id)
             if not output.exists() or output.stat().st_size == 0:
                 raise HTTPException(status_code=422, detail="XHamster returned an empty media file.")
             if output.stat().st_size > MAX_FILE_SIZE:
                 raise HTTPException(status_code=413, detail="The resulting file is larger than the 2 GB limit.")
+            update_download_progress(request.download_id, stage="ready", percent=100, speed=None, eta=0, message="Video ready; sending it to your browser…")
         except HTTPException:
             cleanup(temp_dir)
             raise
