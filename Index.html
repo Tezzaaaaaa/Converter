@@ -322,6 +322,19 @@ h1 .grad{
   flex-shrink:0;
 }
 
+/* ─────────────  DOWNLOAD PROGRESS  ───────────── */
+.download-progress{display:none;margin-top:18px;max-width:820px;padding:18px 20px;border-radius:var(--r-md);background:var(--surface);box-shadow:var(--nm-in)}
+.download-progress.show{display:block}
+.progress-top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;font-size:13px;font-weight:600}
+.progress-percent{font-variant-numeric:tabular-nums;color:var(--accent-2);white-space:nowrap}
+.progress-track{height:10px;overflow:hidden;border-radius:var(--r-pill);background:#11141b;box-shadow:var(--nm-in-sm)}
+.progress-fill{height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,var(--accent),var(--accent-2));transition:width .25s ease}
+.progress-fill.indeterminate{width:35%;animation:progress-sweep 1.2s ease-in-out infinite}
+@keyframes progress-sweep{0%{transform:translateX(-110%)}100%{transform:translateX(310%)}}
+.progress-detail{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:10px;color:var(--text-soft);font-size:12px;line-height:1.5}
+.progress-detail span:empty{display:none}
+@media(prefers-reduced-motion:reduce){.progress-fill.indeterminate{animation:none;width:60%}}
+
 /* ─────────────  RESULT  ───────────── */
 .result{display:none;margin-top:28px;max-width:820px}
 .result.show{display:block;animation:rise .6s var(--ease-out) both}
@@ -591,6 +604,20 @@ footer a:hover{color:var(--accent)}
 
     <div id="status" class="status" aria-live="polite"></div>
 
+    <section id="downloadProgress" class="download-progress" aria-live="polite" aria-label="Download progress">
+      <div class="progress-top">
+        <span id="progressMessage">Preparing download…</span>
+        <span id="progressPercent" class="progress-percent">0%</span>
+      </div>
+      <div id="progressTrack" class="progress-track" role="progressbar" aria-label="Download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div id="progressFill" class="progress-fill indeterminate"></div>
+      </div>
+      <div class="progress-detail">
+        <span id="progressEta">Calculating time remaining…</span>
+        <span id="progressSpeed"></span>
+      </div>
+    </section>
+
     <section id="result" class="result">
       <div class="media">
         <div class="thumb-wrap">
@@ -694,8 +721,16 @@ footer a:hover{color:var(--accent)}
   const analyzeBtn = $("analyze");
   const videoBtn   = $("videoBtn");
   const audioBtn   = $("audioBtn");
+  const progressBox = $("downloadProgress");
+  const progressMessage = $("progressMessage");
+  const progressPercent = $("progressPercent");
+  const progressTrack = $("progressTrack");
+  const progressFill = $("progressFill");
+  const progressEta = $("progressEta");
+  const progressSpeed = $("progressSpeed");
 
   let currentUrl = "";
+  let activeDownloadId = null;
 
   /* ── status ─────────────────────────────────────────── */
   function setStatus(msg, type){
@@ -798,15 +833,120 @@ footer a:hover{color:var(--accent)}
     }
   });
 
+  /* ── download progress ───────────────────────────────── */
+  function formatDuration(seconds){
+    if(!Number.isFinite(seconds) || seconds < 0) return "";
+    seconds = Math.ceil(seconds);
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    if(hours) return hours + "h " + minutes + "m";
+    if(minutes) return minutes + "m " + secs + "s";
+    return secs + "s";
+  }
+
+  function formatBytes(bytes){
+    if(!Number.isFinite(bytes) || bytes < 0) return "";
+    const units = ["B","KB","MB","GB"];
+    let value = bytes, unit = 0;
+    while(value >= 1024 && unit < units.length - 1){ value /= 1024; unit++; }
+    return value.toFixed(unit ? 1 : 0) + " " + units[unit];
+  }
+
+  function showProgress(){
+    progressBox.classList.add("show");
+    progressMessage.textContent = "Starting download…";
+    progressPercent.textContent = "0%";
+    progressFill.style.width = "0%";
+    progressFill.classList.add("indeterminate");
+    progressTrack.setAttribute("aria-valuenow", "0");
+    progressEta.textContent = "Calculating time remaining…";
+    progressSpeed.textContent = "";
+  }
+
+  function updateProgress(data){
+    if(!data) return;
+    progressBox.classList.add("show");
+    progressMessage.textContent = data.message || "Downloading…";
+    if(Number.isFinite(data.percent)){
+      const percent = Math.max(0, Math.min(100, data.percent));
+      progressPercent.textContent = Math.round(percent) + "%";
+      progressFill.classList.remove("indeterminate");
+      progressFill.style.width = percent + "%";
+      progressTrack.setAttribute("aria-valuenow", String(Math.round(percent)));
+    } else {
+      progressPercent.textContent = "—";
+      progressFill.classList.add("indeterminate");
+      progressFill.style.width = "";
+      progressTrack.removeAttribute("aria-valuenow");
+    }
+    const eta = formatDuration(data.eta);
+    progressEta.textContent = eta ? "Estimated time remaining: " + eta : "Time remaining unavailable for this stage";
+    progressSpeed.textContent = Number.isFinite(data.speed) && data.speed > 0 ? formatBytes(data.speed) + "/s" : "";
+    if(Number.isFinite(data.downloaded_bytes)){
+      let detail = formatBytes(data.downloaded_bytes);
+      if(Number.isFinite(data.total_bytes) && data.total_bytes > 0) detail += " of " + formatBytes(data.total_bytes);
+      progressSpeed.textContent = (progressSpeed.textContent ? progressSpeed.textContent + " · " : "") + detail;
+    }
+  }
+
+  async function watchDownloadProgress(id){
+    while(activeDownloadId === id){
+      try{
+        const res = await fetch(API_BASE + "/api/progress/" + encodeURIComponent(id), { cache: "no-store" });
+        if(res.ok) updateProgress(await res.json());
+      } catch(e){}
+      if(activeDownloadId !== id) break;
+      await new Promise(resolve => setTimeout(resolve, 800));
+    }
+  }
+
+  async function readResponseWithProgress(res, id){
+    if(!res.body || !res.body.getReader) return res.blob();
+    const reader = res.body.getReader();
+    const chunks = [];
+    const length = Number(res.headers.get("Content-Length")) || 0;
+    let received = 0;
+    const started = performance.now();
+    updateProgress({stage:"transferring",percent:0,message:"Sending file to your browser…",eta:null});
+    while(true){
+      const part = await reader.read();
+      if(part.done) break;
+      chunks.push(part.value);
+      received += part.value.byteLength;
+      const elapsed = Math.max((performance.now() - started) / 1000, 0.1);
+      const speed = received / elapsed;
+      const percent = length > 0 ? Math.min(100, received * 100 / length) : null;
+      const eta = length > 0 && speed > 0 ? (length - received) / speed : null;
+      updateProgress({
+        stage:"transferring",
+        percent,
+        downloaded_bytes:received,
+        total_bytes:length || null,
+        speed,
+        eta,
+        message:length > 0 ? "Sending file to your browser…" : "Receiving file in your browser…"
+      });
+    }
+    if(activeDownloadId === id){
+      updateProgress({percent:100,eta:0,speed:null,downloaded_bytes:received,total_bytes:length || received,message:"File received by your browser."});
+    }
+    return new Blob(chunks, {type:res.headers.get("Content-Type") || "application/octet-stream"});
+  }
+
   /* ── download ───────────────────────────────────────── */
   async function download(path, formatId){
     if(!currentUrl) return;
     videoBtn.disabled = true;
     audioBtn.disabled = true;
-    setStatus("Preparing download… (10–60s)");
+    activeDownloadId = (crypto.randomUUID ? crypto.randomUUID() : "dl_" + Date.now() + "_" + Math.random().toString(36).slice(2));
+    const downloadId = activeDownloadId;
+    showProgress();
+    setStatus("Preparing download…");
 
     try{
-      const body = { url: currentUrl };
+      watchDownloadProgress(downloadId);
+      const body = { url: currentUrl, download_id: downloadId };
       if(formatId) body.format_id = formatId;
 
       const res = await fetch(API_BASE + path, {
@@ -855,7 +995,7 @@ footer a:hover{color:var(--accent)}
         throw new Error(msg);
       }
 
-      const blob = await res.blob();
+      const blob = await readResponseWithProgress(res, downloadId);
       if(!blob.size) throw new Error("Backend returned an empty file.");
 
       const name = pickFilename(res.headers.get("Content-Disposition"), ct, res.url);
@@ -870,8 +1010,15 @@ footer a:hover{color:var(--accent)}
       setStatus("Download ready.", "success");
     } catch(err){
       console.error(err);
+      progressMessage.textContent = "Download failed";
+      progressPercent.textContent = "—";
+      progressFill.classList.remove("indeterminate");
+      progressFill.style.width = "0%";
+      progressEta.textContent = err.message || "Download failed.";
+      progressSpeed.textContent = "";
       setStatus(err.message || "Download failed.", "error");
     } finally {
+      activeDownloadId = null;
       videoBtn.disabled = false;
       audioBtn.disabled = false;
     }
