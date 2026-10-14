@@ -19,6 +19,44 @@ from pydantic import BaseModel, field_validator
 BASE_DIR = Path(__file__).resolve().parent
 INDEX_FILE = BASE_DIR / "Index.html"
 MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024
+DOWNLOAD_PROGRESS: dict[str, dict] = {}
+
+
+def update_download_progress(download_id: str | None, **values) -> None:
+    if not download_id:
+        return
+    current = DOWNLOAD_PROGRESS.get(download_id, {})
+    current.update(values)
+    DOWNLOAD_PROGRESS[download_id] = current
+
+
+def yt_dlp_progress_hook(download_id: str):
+    def update(data: dict) -> None:
+        status = data.get("status")
+        if status == "downloading":
+            downloaded = data.get("downloaded_bytes") or 0
+            total = data.get("total_bytes") or data.get("total_bytes_estimate")
+            percent = min(99, downloaded * 100 / total) if total else None
+            update_download_progress(
+                download_id,
+                stage="downloading",
+                percent=round(percent, 1) if percent is not None else None,
+                downloaded_bytes=downloaded,
+                total_bytes=total,
+                speed=data.get("speed"),
+                eta=data.get("eta"),
+                message="Downloading video…" if percent is not None else "Downloading video… (size estimate unavailable)",
+            )
+        elif status == "finished":
+            update_download_progress(
+                download_id,
+                stage="processing",
+                percent=99,
+                speed=None,
+                eta=None,
+                message="Download received; processing and merging video…",
+            )
+    return update
 
 app = FastAPI(title="Video Downloader", version="1.0.0")
 
@@ -33,6 +71,14 @@ app.add_middleware(
 class URLRequest(BaseModel):
     url: str
     format_id: str | None = None
+    download_id: str | None = None
+
+    @field_validator("download_id")
+    @classmethod
+    def validate_download_id(cls, value: str | None) -> str | None:
+        if value is not None and not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", value):
+            raise ValueError("Invalid download progress ID.")
+        return value
 
     @field_validator("url")
     @classmethod
@@ -295,12 +341,25 @@ def extract_info_with_fallbacks(url: str) -> dict:
     raise RuntimeError("Unable to extract media.")
 
 
-def download_with_fallbacks(url: str, options: dict) -> None:
+def download_with_fallbacks(url: str, options: dict, download_id: str | None = None) -> None:
+    if download_id:
+        update_download_progress(
+            download_id,
+            stage="starting",
+            percent=0,
+            downloaded_bytes=0,
+            total_bytes=None,
+            speed=None,
+            eta=None,
+            message="Preparing source download…",
+        )
     last_error: Exception | None = None
 
     for candidate in x_url_candidates(url):
         for attempt in extraction_attempts(candidate):
             attempt.update(options)
+            if download_id:
+                attempt["progress_hooks"] = [yt_dlp_progress_hook(download_id)]
             try:
                 with yt_dlp.YoutubeDL(attempt) as ydl:
                     ydl.download([candidate])
@@ -401,6 +460,17 @@ def health() -> dict:
     return {"ok": True}
 
 
+@app.get("/api/progress/{download_id}")
+def download_progress(download_id: str) -> dict:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", download_id):
+        raise HTTPException(status_code=400, detail="Invalid download progress ID.")
+    return DOWNLOAD_PROGRESS.get(download_id, {
+        "stage": "starting",
+        "percent": 0,
+        "message": "Preparing download…",
+    })
+
+
 @app.post("/api/info")
 def media_info(request: URLRequest) -> dict:
     return extract(request.url)
@@ -448,7 +518,7 @@ def download_media(request: URLRequest, background_tasks: BackgroundTasks) -> Fi
     })
 
     try:
-        download_with_fallbacks(request.url, options)
+        download_with_fallbacks(request.url, options, request.download_id)
     except Exception as exc:
         for child in temp_dir.iterdir():
             child.unlink(missing_ok=True)
@@ -467,6 +537,7 @@ def download_media(request: URLRequest, background_tasks: BackgroundTasks) -> Fi
         temp_dir.rmdir()
         raise HTTPException(status_code=413, detail="The resulting file is larger than the 2 GB limit.")
 
+    update_download_progress(request.download_id, stage="ready", percent=100, speed=None, eta=0, message="Video ready; sending it to your browser…")
     filename = re.sub(r'[^A-Za-z0-9._ -]+', "_", output.name).strip() or "download.mp4"
     background_tasks.add_task(cleanup, temp_dir)
 
@@ -519,6 +590,7 @@ def download_audio(request: URLRequest, background_tasks: BackgroundTasks) -> Fi
         temp_dir.rmdir()
         raise HTTPException(status_code=413, detail="The resulting file is larger than the 2 GB limit.")
 
+    update_download_progress(request.download_id, stage="ready", percent=100, speed=None, eta=0, message="Audio ready; sending it to your browser…")
     filename = re.sub(r'[^A-Za-z0-9._ -]+', "_", output.name).strip() or "audio.mp3"
     background_tasks.add_task(cleanup, temp_dir)
 
