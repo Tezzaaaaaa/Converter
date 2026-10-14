@@ -1,63 +1,111 @@
 # Video Downloader
 
-A NoAdsDL-style universal downloader powered by **yt-dlp** and **FFmpeg**.
+A web-based media downloader built with **yt-dlp**, **FFmpeg** and a FastAPI backend.
+
+**Repository:** https://github.com/Tezzaaaaaa/Video-Downloader  
+**GitHub Pages frontend/demo:** https://tezzaaaaaa.github.io/Video-Downloader/
+
+> **Deployment note:** GitHub Pages only serves static files. It cannot run the Python, yt-dlp or FFmpeg backend, so downloading requires the application to be deployed as a server/container. The full application is designed to run as one web service that serves the frontend and API together.
 
 ## How it works
 
 1. Paste a public media URL.
-2. The server extracts the title, thumbnail and available formats.
-3. Choose video or MP3.
-4. The server downloads and post-processes the media, then returns the file.
+2. The backend attempts to extract the media title, thumbnail and available formats.
+3. Choose a supported video or MP3 output.
+4. The backend downloads and post-processes the media, then returns the result.
 
-Supported platforms depend on the current yt-dlp extractors. Site support can change as platforms change; the reliable compatibility test is attempting extraction.
+Supported websites depend on the installed yt-dlp extractors and can change as websites change. A successful extraction attempt is the practical compatibility test.
 
-The server includes yt-dlp's **curl_cffi** support and browser-compatible request handling for sources that reject ordinary HTTP/TLS fingerprints with errors such as HTTP 403.
+## Features
+
+- Web interface served by the application backend
+- Metadata extraction and available-format selection
+- Video downloads and MP3 audio extraction
+- yt-dlp with FFmpeg/FFprobe post-processing
+- Browser-compatible request handling, including optional `curl_cffi` support
+- Site-specific retry paths for X/Twitter and XHamster when supported by the installed dependencies
+- Health-check and API endpoints for deployment monitoring
 
 ## Requirements
 
-- Python 3.10+
-- yt-dlp[default,curl-cffi]
-- FFmpeg + FFprobe
-- A supported JavaScript runtime for full YouTube support; the included Dockerfile installs Deno.
+- Python 3.10 or newer
+- `yt-dlp[default,curl-cffi]`
+- FFmpeg and FFprobe
+- A supported JavaScript runtime for full YouTube support; the included Dockerfile installs Deno
 
 ## Run locally
 
-1. Create a virtual environment: `python -m venv .venv`
-2. Activate it: `source .venv/bin/activate`
-3. Install dependencies: `pip install -r requirements.txt`
-4. Start the server: `python server.py`
-5. Open `http://localhost:8000`
+1. Create a virtual environment:
+
+   ```bash
+   python -m venv .venv
+   ```
+
+2. Activate it:
+
+   ```bash
+   source .venv/bin/activate
+   ```
+
+3. Install dependencies:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. Start the server:
+
+   ```bash
+   python server.py
+   ```
+
+5. Open http://localhost:8000
 
 ## Docker
 
-Build: `docker build -t video-downloader .`
+Build the image:
 
-Run: `docker run --rm -p 8000:8000 video-downloader`
+```bash
+docker build -t video-downloader .
+```
 
-## Important deployment note
+Run the container:
 
-GitHub Pages can host the frontend but cannot execute the Python/yt-dlp/FFmpeg backend. Deploy the repository as a server/container on a host that can run Docker or Python, then serve Index.html through server.py.
+```bash
+docker run --rm -p 8000:8000 video-downloader
+```
 
-The downloader does not bypass DRM, private accounts, paywalls, login-only content or access restrictions. Use it only for media you are permitted to download.
-## Live architecture
+## Deployment
 
-Render runs the complete application as one Docker web service. The same FastAPI server serves the frontend and the yt-dlp/FFmpeg backend, so the frontend uses same-origin API requests and has no Replit dependency.
+The included `Dockerfile` and `render.yaml` describe the Docker-based deployment configuration. Connect the repository to a Docker-capable web-service host and deploy the full application. The frontend and backend should be served from the same origin so the frontend can make same-origin API requests.
 
-- Render service: `video-downloader`
-- Health check: `/health`
+- Health check: `GET /health`
 - Metadata: `POST /api/info`
 - Video: `POST /api/download`
-- MP3: `POST /api/audio`
+- MP3 audio: `POST /api/audio`
 
-The included `render.yaml` and `Dockerfile` are the deployment configuration. Connect this GitHub repository to Render and deploy it as a Docker Web Service.
-
+A successful GitHub Pages deployment alone does **not** mean the download backend is running.
 
 ## X / Twitter and XHamster
 
-The backend has site-specific extraction fallbacks for X / Twitter and XHamster:
+The backend includes site-specific extraction fallback paths:
 
-- X / Twitter URLs are normalized across `x.com`, `twitter.com` and mobile variants, then tried through yt-dlp's supported GraphQL, syndication and legacy APIs, with an IPv4 retry for network-level 403 failures.
-- XHamster extraction retries the normal request, IPv4, browser impersonation and IPv4 + browser impersonation paths when supported by the installed yt-dlp networking dependencies.
-- The repository uses a pre-release yt-dlp build so fresh deployments receive current extractor fixes.
+- X/Twitter URLs are normalized across `x.com`, `twitter.com` and mobile variants, then attempted through yt-dlp-supported extraction paths, with network retries where configured.
+- XHamster extraction can retry ordinary requests, IPv4 and browser-impersonation paths when the installed yt-dlp networking dependencies support them.
 
-These fallbacks do not bypass private/protected accounts, login requirements, DRM, paywalls or age/region restrictions. yt-dlp documents that X and XHamster can return authentication, anti-bot, geo or age-verification failures even on current builds. citeturn1search0turn0search2turn0search5
+These retries are best-effort compatibility measures. They do not guarantee extraction; platforms may change their APIs or impose authentication, anti-bot, geographic or age-verification restrictions.
+
+## Privacy, permissions and restrictions
+
+Use the downloader only for media you own or are permitted to download. It does not bypass DRM, private accounts, paywalls, login-only content or other access restrictions. When deploying a public instance, review the host's resource limits, access controls and applicable laws.
+
+## Branding
+
+The `favicon.svg` file is used for the browser-tab icon and the header logo.
+
+## Project components
+
+- `server.py` — web server and API
+- `Index.html` — frontend page
+- `Dockerfile` — container image configuration
+- `render.yaml` — Render deployment configuration
