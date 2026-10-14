@@ -1,0 +1,13 @@
+{
+  "name": "video-downloader-cloudflare",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types"
+  },
+  "devDependencies": {
+    "wrangler": "4.149.0"
+  }
+}
