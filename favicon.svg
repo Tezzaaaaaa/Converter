@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
   <title id="title">Video Downloader</title>
   <rect width="128" height="128" rx="28" fill="#F6F6F3"/>
-  <path fill="#111111" fill-rule="evenodd" d="M19 13h34c30 0 49 20 49 51s-19 51-49 51H19V13zm20 18v66h13c19 0 30-12 30-33S71 31 52 31H39z"/>
+  <path fill="#111111" fill-rule="evenodd" d="M19 13h34c30 0 49 20 49 51s-19 51-49 51H19V13zm20 18v66h13c19 0 30-12 30-33S71 31 52 31H39z" transform="translate(-3 0) scale(1.1 1)"/>
   <path fill="#3070D0" d="M56 46 83 64 56 82Z"/>
 </svg>
