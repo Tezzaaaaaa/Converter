@@ -1,0 +1,35 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "video-downloader",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-14",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true
+  },
+  "containers": [
+    {
+      "class_name": "VideoDownloaderContainer",
+      "scheduling_policy": "durable_object",
+      "images": {
+        "base": {
+          "dockerfile": "./Dockerfile"
+        }
+      }
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "VIDEO_DOWNLOADER",
+        "class_name": "VideoDownloaderContainer"
+      }
+    ]
+  },
+  "exports": {
+    "VideoDownloaderContainer": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  }
+}
