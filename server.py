@@ -110,7 +110,10 @@ def xhamster_media_host(hostname: str) -> bool:
 
 
 def xhamster_source_id(url: str) -> str:
-    return "xh_" + hashlib.sha256(url.encode("utf-8")).hexdigest()[:20]
+    path = urlparse(url).path
+    marker = "/speed=0/"
+    stable_path = path.split(marker, 1)[1] if marker in path else path.rsplit("/", 1)[-1]
+    return "xh_" + hashlib.sha256(stable_path.encode("utf-8")).hexdigest()[:20]
 
 
 def xhamster_fetch_page(url: str) -> str:
@@ -163,7 +166,7 @@ def xhamster_public_sources(url: str) -> list[dict]:
             continue
         seen.add(candidate)
 
-        quality_match = re.search(r"(?<!\d)(\d{3,4})p?(?!\d)", candidate, re.I)
+        quality_match = re.search(r"(?<!\d)(\d{3,4})p(?:\.|$)", urlparse(candidate).path, re.I)
         height = int(quality_match.group(1)) if quality_match else None
         is_hls = ".m3u8" in lowered
         sources.append({
@@ -210,14 +213,15 @@ def xhamster_download_source(source: dict, page_url: str, output: Path) -> None:
         )
         return
 
-    with curl_requests.get(
+    response = curl_requests.get(
         source["url"],
         impersonate="chrome",
         headers=headers,
         stream=True,
         timeout=30,
         allow_redirects=True,
-    ) as response:
+    )
+    try:
         response.raise_for_status()
         total = 0
         with output.open("wb") as handle:
@@ -228,6 +232,8 @@ def xhamster_download_source(source: dict, page_url: str, output: Path) -> None:
                 if total > MAX_FILE_SIZE:
                     raise HTTPException(status_code=413, detail="The resulting file is larger than the 500 MB limit.")
                 handle.write(chunk)
+    finally:
+        response.close()
 
 
 def x_url_candidates(url: str) -> list[str]:
