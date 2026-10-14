@@ -76,7 +76,7 @@ def validate_format_id(format_id: str | None) -> str | None:
 
 
 def base_options() -> dict:
-    return {
+    options = {
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
@@ -85,6 +85,13 @@ def base_options() -> dict:
         "fragment_retries": 3,
         "max_filesize": MAX_FILE_SIZE,
     }
+    cookies_file = os.environ.get("YTDLP_COOKIES_FILE", "").strip()
+    if cookies_file:
+        cookie_path = Path(cookies_file)
+        if not cookie_path.is_file():
+            raise RuntimeError("The configured yt-dlp cookies file does not exist or is not readable.")
+        options["cookiefile"] = str(cookie_path)
+    return options
 
 
 def is_x_url(url: str) -> bool:
@@ -309,7 +316,7 @@ def download_with_fallbacks(url: str, options: dict) -> None:
 def extract(url: str) -> dict:
     validate_public_url(url)
 
-    if is_xhamster_url(url):
+    if is_xhamster_url(url) and not os.environ.get("YTDLP_COOKIES_FILE", "").strip():
         try:
             sources = xhamster_public_sources(url)
             if sources:
