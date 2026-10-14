@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Video Downloader</title>
 <meta name="description" content="Download public video and audio links with yt-dlp and FFmpeg.">
+<meta name="theme-color" content="#171a22">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
@@ -148,6 +150,7 @@ header{
   opacity:.14;
 }
 .brand-mark svg{width:22px;height:22px;position:relative;z-index:1}
+.brand-mark img{width:100%;height:100%;object-fit:cover;position:relative;z-index:1;border-radius:inherit}
 .brand-sub{
   font-family:var(--font-body);
   font-size:11px;font-weight:500;
@@ -548,17 +551,15 @@ footer a:hover{color:var(--accent)}
 <div class="wrap">
 
   <header>
-    <div class="brand">
+    <a class="brand" href="./" aria-label="Video Downloader home">
       <span class="brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>
-        </svg>
+        <img src="./favicon.svg" alt="">
       </span>
       <span>
         Video Downloader
         <span class="brand-sub">yt-dlp · ffmpeg</span>
       </span>
-    </div>
+    </a>
     <div class="header-tag">
       <span class="dot"></span>
       <span>System online</span>
