@@ -18,7 +18,7 @@ from pydantic import BaseModel, field_validator
 
 BASE_DIR = Path(__file__).resolve().parent
 INDEX_FILE = BASE_DIR / "Index.html"
-MAX_FILE_SIZE = 500 * 1024 * 1024
+MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024
 
 app = FastAPI(title="Video Downloader", version="1.0.0")
 
@@ -237,7 +237,7 @@ def xhamster_download_source(source: dict, page_url: str, output: Path) -> None:
                     continue
                 total += len(chunk)
                 if total > MAX_FILE_SIZE:
-                    raise HTTPException(status_code=413, detail="The resulting file is larger than the 500 MB limit.")
+                    raise HTTPException(status_code=413, detail="The resulting file is larger than the 2 GB limit.")
                 handle.write(chunk)
     finally:
         response.close()
@@ -421,7 +421,7 @@ def download_media(request: URLRequest, background_tasks: BackgroundTasks) -> Fi
             if not output.exists() or output.stat().st_size == 0:
                 raise HTTPException(status_code=422, detail="XHamster returned an empty media file.")
             if output.stat().st_size > MAX_FILE_SIZE:
-                raise HTTPException(status_code=413, detail="The resulting file is larger than the 500 MB limit.")
+                raise HTTPException(status_code=413, detail="The resulting file is larger than the 2 GB limit.")
         except HTTPException:
             cleanup(temp_dir)
             raise
@@ -465,7 +465,7 @@ def download_media(request: URLRequest, background_tasks: BackgroundTasks) -> Fi
     if output.stat().st_size > MAX_FILE_SIZE:
         output.unlink(missing_ok=True)
         temp_dir.rmdir()
-        raise HTTPException(status_code=413, detail="The resulting file is larger than the 500 MB limit.")
+        raise HTTPException(status_code=413, detail="The resulting file is larger than the 2 GB limit.")
 
     filename = re.sub(r'[^A-Za-z0-9._ -]+', "_", output.name).strip() or "download.mp4"
     background_tasks.add_task(cleanup, temp_dir)
@@ -517,7 +517,7 @@ def download_audio(request: URLRequest, background_tasks: BackgroundTasks) -> Fi
     if output.stat().st_size > MAX_FILE_SIZE:
         output.unlink(missing_ok=True)
         temp_dir.rmdir()
-        raise HTTPException(status_code=413, detail="The resulting file is larger than the 500 MB limit.")
+        raise HTTPException(status_code=413, detail="The resulting file is larger than the 2 GB limit.")
 
     filename = re.sub(r'[^A-Za-z0-9._ -]+', "_", output.name).strip() or "audio.mp3"
     background_tasks.add_task(cleanup, temp_dir)
