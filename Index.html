@@ -894,7 +894,11 @@ footer a:hover{color:var(--accent)}
     while(activeDownloadId === id){
       try{
         const res = await fetch(API_BASE + "/api/progress/" + encodeURIComponent(id), { cache: "no-store" });
-        if(res.ok) updateProgress(await res.json());
+        if(res.ok){
+          const data = await res.json();
+          updateProgress(data);
+          if(data.stage === "ready" || data.stage === "failed") break;
+        }
       } catch(e){}
       if(activeDownloadId !== id) break;
       await new Promise(resolve => setTimeout(resolve, 800));
